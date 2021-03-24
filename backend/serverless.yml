@@ -11,6 +11,8 @@ provider:
 
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
+  environment:
+    JWKS_URL: ${opt:jwksUrl, 'https://chomnoue.auth0.com/.well-known/jwks.json'}
 
 functions:
 
