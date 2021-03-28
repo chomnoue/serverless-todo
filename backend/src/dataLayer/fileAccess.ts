@@ -9,13 +9,17 @@ export class TodoAccess {
   ) {
   }
 
-  getAttachmentUrl(todoId: String): string {
-    return `https://${this.attachmentsBucket}.s3.amazonaws.com/${todoId}`
+  getGetSignedUrl( key: string ): string {
+    return this.getSignedUrl('getObject', key)
   }
 
   getPutSignedUrl(key: string): string {
-    const signedUrlExpireSeconds = 60 * 5;
-    return this.s3.getSignedUrl('putObject', {
+    return this.getSignedUrl('putObject', key)
+  }
+
+  private getSignedUrl(action: string, key: string) {
+    const signedUrlExpireSeconds = 60 * 5
+    return this.s3.getSignedUrl(action, {
       Bucket: this.attachmentsBucket,
       Key: key,
       Expires: signedUrlExpireSeconds,
