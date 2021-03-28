@@ -1,7 +1,8 @@
-/**
- * Fields in a request to create a single TODO item.
- */
-export interface CreateTodoRequest {
-  name: string
-  dueDate: string
-}
+export default {
+  type: "object",
+  properties: {
+    name: { type: 'string' },
+    dueDate: { type: 'string' }
+  },
+  required: ['name', 'dueDate']
+} as const;
