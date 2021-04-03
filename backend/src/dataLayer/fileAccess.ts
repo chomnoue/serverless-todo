@@ -1,7 +1,7 @@
 import {XAWS} from "./aws";
 
 
-export class TodoAccess {
+export class FileAccess {
 
   constructor(
       private readonly s3 = new XAWS.S3({signatureVersion: 'v4'}),
@@ -9,7 +9,7 @@ export class TodoAccess {
   ) {
   }
 
-  getGetSignedUrl( key: string ): string {
+  getGetSignedUrl(key: string): string {
     return this.getSignedUrl('getObject', key)
   }
 

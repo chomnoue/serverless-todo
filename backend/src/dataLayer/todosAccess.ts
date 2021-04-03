@@ -1,7 +1,7 @@
 import {DocumentClient} from 'aws-sdk/clients/dynamodb'
 import {XAWS} from "./aws";
 import {TodoItem} from "../models/TodoItem";
-import {Next} from "../models/Next";
+import {Sort} from "../models/Sort";
 
 
 export class TodoAccess {
@@ -14,11 +14,11 @@ export class TodoAccess {
   ) {
   }
 
-  async getTodos(userId: string, sort: 'createdAt' | 'dueDate' = 'createdAt', next?: Next, limit?: number): Promise<{ items: TodoItem[], next?: Next }> {
+  async getTodos(userId: string, sort: Sort, next?: string, limit?: number): Promise<{ items: TodoItem[], next?: string }> {
     console.log('Getting all groups')
-    const nextKey = next ? {...next} : undefined
+    const nextKey = next ? {userId} : undefined
     if (nextKey) {
-      nextKey['userId'] = userId
+      nextKey[sort] = next
     }
     const result = await this.docClient.query({
       TableName: this.todosTable,
@@ -32,7 +32,7 @@ export class TodoAccess {
     }).promise()
 
     const items = result.Items as TodoItem[]
-    return {items, next: result.LastEvaluatedKey as Next}
+    return {items, next: result.LastEvaluatedKey ? result.LastEvaluatedKey[sort] : undefined}
   }
 
   async getTodo(todoId: string): Promise<TodoItem> {
@@ -56,8 +56,7 @@ export class TodoAccess {
     for (let key in newValues) {
       const keyVar = `:${key}`
       updateExpression += `${key}=${keyVar},`
-      const value = newValues[key]
-      updateValues[keyVar] = value
+      updateValues[keyVar] = newValues[key]
     }
     await this.docClient.update({
       TableName: this.todosTable,

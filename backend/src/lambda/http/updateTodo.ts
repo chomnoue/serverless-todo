@@ -1,13 +1,15 @@
 import 'source-map-support/register'
 
-import { APIGatewayProxyEvent, APIGatewayProxyHandler, APIGatewayProxyResult } from 'aws-lambda'
+import {APIGatewayProxyResult} from 'aws-lambda'
 
-import { UpdateTodoRequest } from '../../requests/UpdateTodoRequest'
+import UpdateTodoRequest from '../../requests/UpdateTodoRequest'
+import {formatJSONResponse, getUserId, ValidatedEventAPIGatewayHandler} from "../../utils/apiGateway";
+import {middyfy} from "../../utils/lambda";
+import {updateTodo} from "../../businessLogic/todos";
 
-export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const todoId = event.pathParameters.todoId
-  const updatedTodo: UpdateTodoRequest = JSON.parse(event.body)
-
-  // TODO: Update a TODO item with the provided id using values in the "updatedTodo" object
-  return undefined
+const updateTodosHandler: ValidatedEventAPIGatewayHandler<typeof UpdateTodoRequest> = async (event): Promise<APIGatewayProxyResult> => {
+  await updateTodo(getUserId(event), event.pathParameters.todoId, event.body)
+  return formatJSONResponse()
 }
+
+export const handler = middyfy(updateTodosHandler)

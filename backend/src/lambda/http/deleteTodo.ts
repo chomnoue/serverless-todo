@@ -1,10 +1,15 @@
 import 'source-map-support/register'
 
-import { APIGatewayProxyEvent, APIGatewayProxyResult, APIGatewayProxyHandler } from 'aws-lambda'
+import {APIGatewayProxyResult} from 'aws-lambda'
+import {formatJSONResponse, getUserId, ValidatedEventAPIGatewayHandler} from "../../utils/apiGateway";
+import CreateTodoRequest from "../../requests/CreateTodoRequest";
+import {deleteTodo} from "../../businessLogic/todos";
+import {middyfy} from "../../utils/lambda";
 
-export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const todoId = event.pathParameters.todoId
 
-  // TODO: Remove a TODO item by id
-  return undefined
+const deleteTodoHandler: ValidatedEventAPIGatewayHandler<typeof CreateTodoRequest> = async (event): Promise<APIGatewayProxyResult> => {
+  await deleteTodo(getUserId(event), event.pathParameters.todoId)
+  return formatJSONResponse()
 }
+
+export const handler = middyfy(deleteTodoHandler)

@@ -1,12 +1,15 @@
 import 'source-map-support/register'
 
-import { APIGatewayProxyEvent, APIGatewayProxyHandler, APIGatewayProxyResult } from 'aws-lambda'
+import CreateTodoRequest from '../../requests/CreateTodoRequest'
+import {formatJSONResponse, getUserId, ValidatedEventAPIGatewayHandler} from "../../utils/apiGateway";
+import {createTodo} from "../../businessLogic/todos"
+import {middyfy} from "../../utils/lambda";
+import type {APIGatewayProxyResult} from "aws-lambda";
 
-import { CreateTodoRequest } from '../../requests/CreateTodoRequest'
-
-export const handler: APIGatewayProxyHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  const newTodo: CreateTodoRequest = JSON.parse(event.body)
-  // TODO: first implement a user extraction middleware
-  // TODO: Implement creating a new TODO item
-  return undefined
+const createTodoHandler: ValidatedEventAPIGatewayHandler<typeof CreateTodoRequest> = async (event): Promise<APIGatewayProxyResult> => {
+  console.log('Processing event: ', event)
+  const todoItem = createTodo(getUserId(event), event.body)
+  return formatJSONResponse(todoItem)
 }
+
+export const handler = middyfy(createTodoHandler)
