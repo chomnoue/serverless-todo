@@ -6,16 +6,21 @@ import CreateTodoRequest from "../requests/CreateTodoRequest"
 import type {FromSchema} from "json-schema-to-ts"
 import UpdateTodoRequest from "../requests/UpdateTodoRequest";
 import {Sort} from "../models/Sort";
+import {Next} from "../models/Next";
 
 const todosAccess = new TodoAccess()
 const fileAccess = new FileAccess()
 
-export async function getTodos(userId: string, sort: Sort = 'createdAt', next?: string, limit?: number): Promise<{ items: TodoItem[], next?: string }> {
+export async function getTodos(userId: string, sort: Sort = 'createdAt', next?: Next, limit?: number): Promise<{ items: TodoItem[], next: Next }> {
   const todos = await todosAccess.getTodos(userId, sort, next, limit)
   for (const todo of todos.items) {
-    todo.attachmentUrl = fileAccess.getGetSignedUrl(todo.todoId)
+    todo.attachmentUrl = getAttachmentUrl(userId, todo.todoId)
   }
   return todos
+}
+
+function getAttachmentUrl(userId: string, todoId: string) {
+  return fileAccess.getGetSignedUrl(fileKey(userId, todoId));
 }
 
 export async function createTodo(userId: string, request: FromSchema<typeof CreateTodoRequest>): Promise<TodoItem> {
@@ -29,15 +34,11 @@ export async function createTodo(userId: string, request: FromSchema<typeof Crea
     dueDate: request.dueDate
   }
   await todosAccess.createTodo(todoItem)
-  todoItem.attachmentUrl = fileAccess.getGetSignedUrl(todoId)
+  todoItem.attachmentUrl = getAttachmentUrl(userId, todoId)
   return todoItem
 }
 
 export async function updateTodo(userId: string, todoId: string, request: FromSchema<typeof UpdateTodoRequest>) {
-  const todoItem = await todosAccess.getTodo(todoId)
-  if (userId !== todoItem.userId) {
-    throw Error(`User ${userId} cannot update todo ${todoId}`)
-  }
   const newValues: { [key: string]: any } = {}
   if (request.name) {
     newValues.name = request.name
@@ -48,22 +49,18 @@ export async function updateTodo(userId: string, todoId: string, request: FromSc
   if ('done' in request) {
     newValues.done = request.done
   }
-  await todosAccess.updateTodo(todoId, newValues)
+  await todosAccess.updateTodo(userId, todoId, newValues)
 }
 
 export async function deleteTodo(userId: string, todoId: string) {
-  const todoItem = await todosAccess.getTodo(todoId)
-  if (userId !== todoItem.userId) {
-    throw Error(`User ${userId} cannot delete todo ${todoId}`)
-  }
-  await todosAccess.deleteTodo(todoId)
+  await todosAccess.deleteTodo(userId, todoId)
+}
+
+function fileKey(userId: string, todoId: string): string {
+  return `${userId}/${todoId}`
 }
 
 export async function generateUploadUrl(userId: string, todoId: string) {
-  const todoItem = await todosAccess.getTodo(todoId)
-  if (userId !== todoItem.userId) {
-    throw Error(`User ${userId} cannot upload attachment for todo ${todoId}`)
-  }
-  return fileAccess.getPutSignedUrl(todoId)
+  return fileAccess.getPutSignedUrl(fileKey(userId, todoId))
 }
 

@@ -2,23 +2,23 @@ import {DocumentClient} from 'aws-sdk/clients/dynamodb'
 import {XAWS} from "./aws";
 import {TodoItem} from "../models/TodoItem";
 import {Sort} from "../models/Sort";
+import {Next} from "../models/Next";
 
 
 export class TodoAccess {
 
   constructor(
-      private readonly docClient: DocumentClient = XAWS.DynamoDB.DocumentClient(),
+      private readonly docClient: DocumentClient = new XAWS.DynamoDB.DocumentClient(),
       private readonly todosTable = process.env.TODOS_TABLE,
       private readonly creationDateIndex = process.env.TODOS_CREATION_DATE_INDEX,
       private readonly dueDateIndex = process.env.TODOS_DUE_DATE_INDEX
   ) {
   }
 
-  async getTodos(userId: string, sort: Sort, next?: string, limit?: number): Promise<{ items: TodoItem[], next?: string }> {
-    console.log('Getting all groups')
-    const nextKey = next ? {userId} : undefined
+  async getTodos(userId: string, sort: Sort, next?: Next, limit?: number): Promise<{ items: TodoItem[], next: Next }> {
+    const nextKey = next ? {userId, todoId: next.todoId} : undefined
     if (nextKey) {
-      nextKey[sort] = next
+      nextKey[sort] = next.sortKey
     }
     const result = await this.docClient.query({
       TableName: this.todosTable,
@@ -30,17 +30,12 @@ export class TodoAccess {
       ExclusiveStartKey: nextKey,
       Limit: limit
     }).promise()
-
-    const items = result.Items as TodoItem[]
-    return {items, next: result.LastEvaluatedKey ? result.LastEvaluatedKey[sort] : undefined}
-  }
-
-  async getTodo(todoId: string): Promise<TodoItem> {
-    const result = await this.docClient.get({
-      TableName: this.todosTable,
-      Key: {todoId}
-    }).promise()
-    return result.Item as TodoItem
+    const items = result.Items as TodoItem[] || []
+    const newNext: Next = result.LastEvaluatedKey? {
+      todoId: result.LastEvaluatedKey.todoId,
+      sortKey: result.LastEvaluatedKey[sort]
+    }: undefined
+    return {items, next: newNext}
   }
 
   async createTodo(todoItem: TodoItem) {
@@ -50,26 +45,23 @@ export class TodoAccess {
     }).promise()
   }
 
-  async updateTodo(todoId: string, newValues: { [key: string]: any }) {
-    let updateExpression = 'set '
-    const updateValues = {}
+  async updateTodo(userId: string, todoId: string, newValues: { [key: string]: any }) {
+    const attributesUpdates = {}
     for (let key in newValues) {
-      const keyVar = `:${key}`
-      updateExpression += `${key}=${keyVar},`
-      updateValues[keyVar] = newValues[key]
+      attributesUpdates[key] = {Action: "PUT", Value: newValues[key]}
     }
     await this.docClient.update({
       TableName: this.todosTable,
-      Key: {todoId},
-      UpdateExpression: updateExpression,
-      ExpressionAttributeValues: updateValues
-    }).promise()
+      Key: {userId, todoId},
+      AttributeUpdates: attributesUpdates,
+      ReturnValues:"UPDATED_NEW"
+    }).promise();
   }
 
-  async deleteTodo(todoId: string) {
+  async deleteTodo(userId: string, todoId: string) {
     await this.docClient.delete({
       TableName: this.todosTable,
-      Key: {todoId}
-    })
+      Key: {userId, todoId}
+    }).promise();
   }
 }

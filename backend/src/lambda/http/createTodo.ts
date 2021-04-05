@@ -7,9 +7,8 @@ import {middyfy} from "../../utils/lambda";
 import type {APIGatewayProxyResult} from "aws-lambda";
 
 const createTodoHandler: ValidatedEventAPIGatewayHandler<typeof CreateTodoRequest> = async (event): Promise<APIGatewayProxyResult> => {
-  console.log('Processing event: ', event)
-  const todoItem = createTodo(getUserId(event), event.body)
-  return formatJSONResponse(todoItem)
+  const item = await createTodo(getUserId(event), event.body)
+  return formatJSONResponse({item})
 }
 
 export const handler = middyfy(createTodoHandler)

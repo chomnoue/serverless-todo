@@ -1,13 +1,16 @@
-service:
-  name: serverless-todo-app
-
+service: serverless-todo-app
+variablesResolutionMode: 20210219
+configValidationMode: error
 plugins:
   - serverless-webpack
-  - serverless-iam-roles-per-function
 
 provider:
   name: aws
-  runtime: nodejs8.10
+  runtime: nodejs14.x
+  lambdaHashingVersion: 20201221
+  tracing:
+    apiGateway: true
+    lambda: true
 
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
@@ -17,30 +20,6 @@ provider:
     TODOS_CREATION_DATE_INDEX: CreatedAtIndex
     TODOS_DUE_DATE_INDEX: DueDateIndex
     ATTACHMENTS_BUCKET: chomnoue-serverless-todos-attachments-${self:provider.stage}
-
-  iam:
-    role:
-      statements:
-        - Effect: Allow
-          Action:
-            - dynamodb:PutItem
-            - dynamodb:GetItem
-            - dynamodb:UpdateItem
-            - dynamodb:DeleteItem
-          Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-        - Effect: Allow
-          Action:
-            - dynamodb:Query
-          Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.TODOS_CREATION_DATE_INDEX}
-        - Effect: Allow
-          Action:
-            - dynamodb:Query
-          Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.TODOS_DUE_DATE_INDEX}
-        - Effect: Allow
-          Action:
-            - s3:PutObject
-            - s3:GetObject
-          Resource: arn:aws:s3:::${self:provider.environment.ATTACHMENTS_BUCKET}/*
 
 functions:
 
@@ -55,6 +34,7 @@ functions:
           path: todos
           cors: true
           authorizer: Auth
+    role: GetTodosRole
 
   CreateTodo:
     handler: src/lambda/http/createTodo.handler
@@ -67,6 +47,7 @@ functions:
           request:
             schemas:
               application/json: ${file(create_todo_request.json)}
+    role: CreateTodoRole
 
   UpdateTodo:
     handler: src/lambda/http/updateTodo.handler
@@ -79,6 +60,7 @@ functions:
           request:
             schemas:
               application/json: ${file(update_todo_request.json)}
+    role: UpdateTodoRole
 
   DeleteTodo:
     handler: src/lambda/http/deleteTodo.handler
@@ -88,6 +70,7 @@ functions:
           path: todos/{todoId}
           cors: true
           authorizer: Auth
+    role: DeleteTodoRole
 
   GenerateUploadUrl:
     handler: src/lambda/http/generateUploadUrl.handler
@@ -97,6 +80,7 @@ functions:
           path: todos/{todoId}/attachment
           cors: true
           authorizer: Auth
+    role: GenerateUploadUrlRole
 
 resources:
   Resources:
@@ -124,12 +108,14 @@ resources:
           - AttributeName: dueDate
             AttributeType: S
         KeySchema:
-          - AttributeName: todoId
+          - AttributeName: userId
             KeyType: HASH
+          - AttributeName: todoId
+            KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
         TableName: ${self:provider.environment.TODOS_TABLE}
         GlobalSecondaryIndexes:
-          - IndexName: ${self:provider.environment.CreatedAtIndex}
+          - IndexName: ${self:provider.environment.TODOS_CREATION_DATE_INDEX}
             KeySchema:
               - AttributeName: userId
                 KeyType: HASH
@@ -137,7 +123,7 @@ resources:
                 KeyType: RANGE
             Projection:
               ProjectionType: ALL
-          - IndexName: ${self:provider.environment.DueDateIndex}
+          - IndexName: ${self:provider.environment.TODOS_DUE_DATE_INDEX}
             KeySchema:
               - AttributeName: userId
                 KeyType: HASH
@@ -164,3 +150,119 @@ resources:
                 - DELETE
                 - HEAD
               MaxAge: 3000
+
+    GetTodosRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument: &assumeRolePolicyDocument
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: getTodosPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - &logsStatement
+                  Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    - 'Fn::Join':
+                        - ':'
+                        -
+                          - 'arn:aws:logs'
+                          - Ref: 'AWS::Region'
+                          - Ref: 'AWS::AccountId'
+                          - 'log-group:/aws/lambda/*:*:*'
+                - &xrayStatement
+                  Effect: "Allow" # xray permissions (required)
+                  Action:
+                    - "xray:PutTraceSegments"
+                    - "xray:PutTelemetryRecords"
+                  Resource:
+                    - "*"
+                - Effect: Allow
+                  Action:
+                    - dynamodb:Query
+                  Resource:
+                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.TODOS_CREATION_DATE_INDEX}
+                    - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.TODOS_DUE_DATE_INDEX}
+                - Effect: Allow
+                  Action:
+                    - s3:GetObject
+                  Resource: arn:aws:s3:::${self:provider.environment.ATTACHMENTS_BUCKET}/*
+
+    CreateTodoRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument: *assumeRolePolicyDocument
+        Policies:
+          - PolicyName: createTodoPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - *logsStatement
+                - *xrayStatement
+                - Effect: Allow
+                  Action:
+                    - dynamodb:PutItem
+                  Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+                - Effect: Allow
+                  Action:
+                    - s3:GetObject
+                  Resource: arn:aws:s3:::${self:provider.environment.ATTACHMENTS_BUCKET}/*
+
+    UpdateTodoRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument: *assumeRolePolicyDocument
+        Policies:
+          - PolicyName: updateTodoPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - *logsStatement
+                - *xrayStatement
+                - Effect: Allow
+                  Action:
+                    - dynamodb:UpdateItem
+                  Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+
+    DeleteTodoRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument: *assumeRolePolicyDocument
+        Policies:
+          - PolicyName: deleteTodoPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - *logsStatement
+                - *xrayStatement
+                - Effect: Allow
+                  Action:
+                    - dynamodb:DeleteItem
+                  Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
+
+    GenerateUploadUrlRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument: *assumeRolePolicyDocument
+        Policies:
+          - PolicyName: generateUploadUrlPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - *logsStatement
+                - *xrayStatement
+                - Effect: Allow
+                  Action:
+                    - s3:PutObject
+                  Resource: arn:aws:s3:::${self:provider.environment.ATTACHMENTS_BUCKET}/*

@@ -5,11 +5,16 @@ import {formatJSONResponse, getUserId, ValidatedEventAPIGatewayHandler} from "..
 import {middyfy} from "../../utils/lambda";
 import {getTodos} from "../../businessLogic/todos";
 import {Sort} from "../../models/Sort";
+import {Next} from "../../models/Next";
 
 const getTodosHandler: ValidatedEventAPIGatewayHandler<any> = async (event): Promise<APIGatewayProxyResult> => {
-  const next = event.queryStringParameters.next
-  const sort = event.queryStringParameters.sort as Sort || 'createdAt'
-  const todos = getTodos(getUserId(event), sort, next)
+  const nextTodoId = event.queryStringParameters?.nextTodoId
+  const nextSortKey = event.queryStringParameters?.nextSortKey
+  const next: Next = nextTodoId && nextSortKey ? {todoId: nextTodoId, sortKey: nextSortKey} : undefined
+  const sort = event.queryStringParameters?.sort as Sort || 'createdAt'
+  const limitStr = event.queryStringParameters?.limit
+  const limit = limitStr ? Number(limitStr) : undefined
+  const todos = await getTodos(getUserId(event), sort, next, limit)
   return formatJSONResponse(todos)
 }
 
